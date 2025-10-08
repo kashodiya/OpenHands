@@ -9,6 +9,7 @@ from pydantic import Field
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.integrations.bitbucket.bitbucket_service import BitBucketServiceImpl
+from openhands.integrations.codecommit.codecommit_service import CodeCommitServiceImpl
 from openhands.integrations.github.github_service import GithubServiceImpl
 from openhands.integrations.gitlab.gitlab_service import GitLabServiceImpl
 from openhands.integrations.provider import ProviderToken
@@ -217,6 +218,69 @@ async def create_mr(
 
     except Exception as e:
         error = f'Error creating merge request: {e}'
+        raise ToolError(str(error))
+
+    return response
+
+
+@mcp_server.tool()
+async def create_codecommit_pr(
+    repo_name: Annotated[str, Field(description='AWS CodeCommit repository name')],
+    source_branch: Annotated[str, Field(description='Source branch on repo')],
+    target_branch: Annotated[str, Field(description='Target branch on repo')],
+    title: Annotated[
+        str,
+        Field(description='PR Title'),
+    ],
+    body: Annotated[str | None, Field(description='PR description')],
+) -> str:
+    """Open a PR in AWS CodeCommit"""
+    logger.info('Calling OpenHands MCP create_codecommit_pr')
+
+    request = get_http_request()
+    headers = request.headers
+    conversation_id = headers.get('X-OpenHands-ServerConversation-ID', None)
+
+    provider_tokens = await get_provider_tokens(request)
+    access_token = await get_access_token(request)
+    user_id = await get_user_id(request)
+
+    codecommit_token = (
+        provider_tokens.get(ProviderType.CODECOMMIT, ProviderToken())
+        if provider_tokens
+        else ProviderToken()
+    )
+
+    codecommit_service = CodeCommitServiceImpl(
+        user_id=codecommit_token.user_id,
+        external_auth_id=user_id,
+        external_auth_token=access_token,
+        token=codecommit_token.token,
+        base_domain=codecommit_token.host,
+    )
+
+    try:
+        body = await get_conversation_link(
+            codecommit_service, conversation_id, body or ''
+        )
+    except Exception as e:
+        logger.warning(f'Failed to append conversation link: {e}')
+
+    try:
+        response = await codecommit_service.create_pr(
+            repo_name=repo_name,
+            source_branch=source_branch,
+            target_branch=target_branch,
+            title=title,
+            body=body,
+        )
+
+        if conversation_id:
+            await save_pr_metadata(user_id, conversation_id, response)
+
+    except Exception as e:
+        error = f'Error creating pull request: {e}'
+        logger.error(error)
         raise ToolError(str(error))
 
     return response

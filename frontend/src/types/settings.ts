@@ -2,6 +2,7 @@ export const ProviderOptions = {
   github: "github",
   gitlab: "gitlab",
   bitbucket: "bitbucket",
+  codecommit: "codecommit",
   enterprise_sso: "enterprise_sso",
 } as const;
 

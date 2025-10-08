@@ -51,6 +51,8 @@ export function GitProviderDropdown({
         return "GitLab";
       case "bitbucket":
         return "Bitbucket";
+      case "codecommit":
+        return "AWS CodeCommit";
       case "enterprise_sso":
         return "Enterprise SSO";
       default:

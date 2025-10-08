@@ -175,6 +175,8 @@ export const shouldUseInstallationRepos = (
       return false;
     case "github":
       return app_mode === "saas";
+    case "codecommit":
+      return false;
     default:
       return false;
   }
@@ -188,6 +190,8 @@ export const getGitProviderBaseUrl = (gitProvider: Provider): string => {
       return "https://gitlab.com";
     case "bitbucket":
       return "https://bitbucket.org";
+    case "codecommit":
+      return "https://console.aws.amazon.com/codesuite/codecommit/repositories";
     default:
       return "";
   }
@@ -201,23 +205,27 @@ export const getGitProviderBaseUrl = (gitProvider: Provider): string => {
 export const getProviderName = (gitProvider: Provider) => {
   if (gitProvider === "gitlab") return "GitLab";
   if (gitProvider === "bitbucket") return "Bitbucket";
+  if (gitProvider === "codecommit") return "AWS CodeCommit";
   return "GitHub";
 };
 
 /**
  * Get the name of the PR
- * @param isGitLab Whether the git provider is GitLab
+ * @param provider The git provider
  * @returns The name of the PR
  */
-export const getPR = (isGitLab: boolean) =>
-  isGitLab ? "merge request" : "pull request";
+export const getPR = (provider: Provider | boolean) => {
+  if (provider === "gitlab" || provider === true) return "merge request";
+  return "pull request";
+};
 
 /**
  * Get the short name of the PR
- * @param isGitLab Whether the git provider is GitLab
+ * @param provider The git provider
  * @returns The short name of the PR
  */
-export const getPRShort = (isGitLab: boolean) => (isGitLab ? "MR" : "PR");
+export const getPRShort = (provider: Provider | boolean) =>
+  (provider === "gitlab" || provider === true) ? "MR" : "PR";
 
 /**
  * Construct the pull request (merge request) URL for different providers
@@ -245,6 +253,10 @@ export const constructPullRequestUrl = (
       return `${baseUrl}/${repositoryName}/-/merge_requests/${prNumber}`;
     case "bitbucket":
       return `${baseUrl}/${repositoryName}/pull-requests/${prNumber}`;
+    case "codecommit":
+      // For AWS CodeCommit, we extract just the repository name without owner
+      const repoName = repositoryName.split('/').pop() || repositoryName;
+      return `${baseUrl}/${repoName}/pull-requests/${prNumber}/details?region=us-east-1`;
     default:
       return "";
   }
@@ -279,6 +291,10 @@ export const constructMicroagentUrl = (
       return `${baseUrl}/${repositoryName}/-/blob/main/${microagentPath}`;
     case "bitbucket":
       return `${baseUrl}/${repositoryName}/src/main/${microagentPath}`;
+    case "codecommit":
+      // For AWS CodeCommit, we extract just the repository name without owner
+      const repoName = repositoryName.split('/').pop() || repositoryName;
+      return `${baseUrl}/${repoName}/browse/refs/heads/main/${microagentPath}?region=us-east-1`;
     default:
       return "";
   }
@@ -319,6 +335,13 @@ export const constructRepositoryUrl = (
   repositoryName: string,
 ): string => {
   const baseUrl = getGitProviderBaseUrl(provider);
+
+  if (provider === "codecommit") {
+    // For AWS CodeCommit, we extract just the repository name without owner
+    const repoName = repositoryName.split('/').pop() || repositoryName;
+    return `${baseUrl}/${repoName}?region=us-east-1`;
+  }
+
   return `${baseUrl}/${repositoryName}`;
 };
 
@@ -348,6 +371,10 @@ export const constructBranchUrl = (
       return `${baseUrl}/${repositoryName}/-/tree/${branchName}`;
     case "bitbucket":
       return `${baseUrl}/${repositoryName}/src/${branchName}`;
+    case "codecommit":
+      // For AWS CodeCommit, we extract just the repository name without owner
+      const repoName = repositoryName.split('/').pop() || repositoryName;
+      return `${baseUrl}/${repoName}/browse/refs/heads/${branchName}?region=us-east-1`;
     default:
       return "";
   }
@@ -369,7 +396,7 @@ export const getGitPullPrompt = (): string =>
  */
 export const getGitPushPrompt = (gitProvider: Provider): string => {
   const providerName = getProviderName(gitProvider);
-  const pr = getPR(gitProvider === "gitlab");
+  const pr = getPR(gitProvider);
 
   return `Please push the changes to a remote branch on ${providerName}, but do NOT create a ${pr}. Check your current branch name first - if it's main, master, deploy, or another common default branch name, create a new branch with a descriptive name related to your changes. Otherwise, use the exact SAME branch name as the one you are currently on.`;
 };
@@ -381,8 +408,8 @@ export const getGitPushPrompt = (gitProvider: Provider): string => {
  */
 export const getCreatePRPrompt = (gitProvider: Provider): string => {
   const providerName = getProviderName(gitProvider);
-  const pr = getPR(gitProvider === "gitlab");
-  const prShort = getPRShort(gitProvider === "gitlab");
+  const pr = getPR(gitProvider);
+  const prShort = getPRShort(gitProvider);
 
   return `Please push the changes to ${providerName} and open a ${pr}. If you're on a default branch (e.g., main, master, deploy), create a new branch with a descriptive name otherwise use the current branch. If a ${pr} template exists in the repository, please follow it when creating the ${prShort} description.`;
 };
@@ -393,7 +420,7 @@ export const getCreatePRPrompt = (gitProvider: Provider): string => {
  * @returns The push to PR prompt
  */
 export const getPushToPRPrompt = (gitProvider: Provider): string => {
-  const pr = getPR(gitProvider === "gitlab");
+  const pr = getPR(gitProvider);
 
   return `Please push the latest changes to the existing ${pr}.`;
 };
@@ -464,8 +491,8 @@ export const getRepoMdCreatePrompt = (
   query?: string,
 ): string => {
   const providerName = getProviderName(gitProvider);
-  const pr = getPR(gitProvider === "gitlab");
-  const prShort = getPRShort(gitProvider === "gitlab");
+  const pr = getPR(gitProvider);
+  const prShort = getPRShort(gitProvider);
 
   return `Please explore this repository. Create the file .openhands/microagents/repo.md with:
             ${
